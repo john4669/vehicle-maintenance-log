@@ -441,9 +441,15 @@ class SettingsDialog(QDialog):
         db_layout.addLayout(path_layout)
 
         self.copy_check = QCheckBox("Copy existing data to new location")
-        self.copy_check.setChecked(True)
+        self.copy_check.setChecked(False)
         self.copy_check.setEnabled(False)  # Enabled only when path changes
         db_layout.addWidget(self.copy_check)
+
+        self.overwrite_warning = QLabel("")
+        self.overwrite_warning.setStyleSheet("QLabel { color: #CC6600; padding: 2px; }")
+        self.overwrite_warning.setWordWrap(True)
+        self.overwrite_warning.setVisible(False)
+        db_layout.addWidget(self.overwrite_warning)
 
         default_btn = QPushButton("Reset to Default (app folder)")
         default_btn.clicked.connect(self._reset_default)
@@ -483,7 +489,11 @@ class SettingsDialog(QDialog):
                 filepath += ".db"
             old_path = self.path_edit.text()
             self.path_edit.setText(filepath)
-            self.copy_check.setEnabled(filepath != old_path)
+            path_changed = filepath != old_path
+            self.copy_check.setEnabled(path_changed)
+            if not path_changed:
+                self.copy_check.setChecked(False)
+            self._update_overwrite_warning(filepath)
             self._update_db_info(filepath)
 
     def _reset_default(self):
@@ -493,7 +503,11 @@ class SettingsDialog(QDialog):
         )
         old_path = self.path_edit.text()
         self.path_edit.setText(default_path)
-        self.copy_check.setEnabled(default_path != old_path)
+        path_changed = default_path != old_path
+        self.copy_check.setEnabled(path_changed)
+        if not path_changed:
+            self.copy_check.setChecked(False)
+        self._update_overwrite_warning(default_path)
         self._update_db_info(default_path)
 
     def _update_db_info(self, path):
@@ -509,6 +523,17 @@ class SettingsDialog(QDialog):
                 f"Path: {path}\n"
                 f"Status: New file (will be created on save)"
             )
+
+    def _update_overwrite_warning(self, new_path):
+        """Show a warning if copying would overwrite an existing database."""
+        if self.copy_check.isEnabled() and os.path.exists(new_path):
+            self.overwrite_warning.setText(
+                "⚠ A database already exists at this location. "
+                "If you check 'Copy existing data', it will OVERWRITE that file."
+            )
+            self.overwrite_warning.setVisible(True)
+        else:
+            self.overwrite_warning.setVisible(False)
 
     def get_new_path(self):
         return self.path_edit.text()
@@ -1316,6 +1341,16 @@ class MainWindow(QMainWindow):
 
             # Copy existing database to new location if requested
             if dlg.should_copy() and os.path.exists(old_path):
+                # Warn if target already exists
+                if os.path.exists(new_path):
+                    reply = QMessageBox.warning(
+                        self, "Overwrite Warning",
+                        f"A database already exists at:\n{new_path}\n\n"
+                        "Copying will OVERWRITE that file. Continue?",
+                        QMessageBox.Yes | QMessageBox.No, QMessageBox.No,
+                    )
+                    if reply != QMessageBox.Yes:
+                        return
                 try:
                     # Make sure the target directory exists
                     os.makedirs(os.path.dirname(os.path.abspath(new_path)), exist_ok=True)
@@ -1355,7 +1390,40 @@ class MainWindow(QMainWindow):
 
     # ── Cleanup ─────────────────────────────────────────────────────
 
+    def _backup_database(self):
+        """Create a timestamped backup of the database file."""
+        db_path = self.db.db_path
+        if not os.path.exists(db_path):
+            return
+
+        backup_dir = os.path.join(os.path.dirname(db_path), "backups")
+        os.makedirs(backup_dir, exist_ok=True)
+
+        # Create timestamped backup
+        timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+        db_name = os.path.splitext(os.path.basename(db_path))[0]
+        backup_path = os.path.join(backup_dir, f"{db_name}_backup_{timestamp}.db")
+
+        try:
+            shutil.copy2(db_path, backup_path)
+        except OSError:
+            return  # Silently fail on backup — don't block closing
+
+        # Remove old backups beyond the max
+        max_backups = config.get("max_backups") or 5
+        backups = sorted(
+            [f for f in os.listdir(backup_dir) if f.startswith(db_name) and f.endswith(".db")],
+            reverse=True,
+        )
+        for old_backup in backups[max_backups:]:
+            try:
+                os.remove(os.path.join(backup_dir, old_backup))
+            except OSError:
+                pass
+
     def closeEvent(self, event):
+        if config.get("auto_backup"):
+            self._backup_database()
         self.db.close()
         event.accept()
 
@@ -1363,6 +1431,26 @@ class MainWindow(QMainWindow):
 # ════════════════════════════════════════════════════════════════════
 #  Entry Point
 # ════════════════════════════════════════════════════════════════════
+
+def _resolve_db_path():
+    """Validate the configured db path. Fall back to default if it's bad."""
+    db_path = config.get_db_path()
+    default_path = os.path.join(
+        os.path.dirname(os.path.abspath(__file__)),
+        "vehicle_maintenance.db"
+    )
+
+    # Check if the configured path's directory exists
+    db_dir = os.path.dirname(os.path.abspath(db_path))
+    if os.path.exists(db_dir):
+        return db_path
+
+    # Directory doesn't exist — fall back to default
+    print(f"Database path not accessible: {db_path}")
+    print(f"Falling back to default: {default_path}")
+    config.set("db_path", "")
+    return default_path
+
 
 def main():
     app = QApplication(sys.argv)
@@ -1375,8 +1463,8 @@ def main():
     # Apply saved color theme
     apply_theme(app, config.get("theme") or "system")
 
-    # Load database path from settings (defaults to app folder)
-    db_path = config.get_db_path()
+    # Load and validate database path
+    db_path = _resolve_db_path()
     db = Database(db_path)
 
     window = MainWindow(db)

@@ -4,6 +4,9 @@ venv/
 # Database (each user creates their own)
 *.db
 
+# Database backups
+backups/
+
 # Settings (each user has their own)
 settings.json
 

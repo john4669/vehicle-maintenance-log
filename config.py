@@ -12,6 +12,8 @@ _CONFIG_FILE = os.path.join(_CONFIG_DIR, "settings.json")
 _DEFAULTS = {
     "db_path": "",  # Empty = use default (app folder)
     "theme": "system",  # system, light, dark, blue, green, sand, lavender
+    "auto_backup": True,  # Automatically back up database on close
+    "max_backups": 5,  # Number of backup files to keep
 }
 
 

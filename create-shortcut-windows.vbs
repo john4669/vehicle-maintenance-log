@@ -4,9 +4,11 @@ desktopPath = ws.SpecialFolders("Desktop")
 shortcutPath = desktopPath & "\Vehicle Maintenance Log.lnk"
 
 Set sc = ws.CreateShortcut(shortcutPath)
-sc.TargetPath = appDir & "VehicleLog.bat"
+sc.TargetPath = "wscript.exe"
+sc.Arguments = """" & appDir & "launch.vbs"""
 sc.WorkingDirectory = appDir
 sc.IconLocation = appDir & "icon.ico, 0"
+sc.WindowStyle = 7
 sc.Description = "Track vehicle maintenance, costs, and service history"
 sc.Save
 

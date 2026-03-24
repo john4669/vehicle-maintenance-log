@@ -1,0 +1,17 @@
+# Virtual environment
+venv/
+
+# Database (each user creates their own)
+*.db
+
+# Settings (each user has their own)
+settings.json
+
+# Python
+__pycache__/
+*.pyc
+*.pyo
+
+# OS files
+.DS_Store
+Thumbs.db

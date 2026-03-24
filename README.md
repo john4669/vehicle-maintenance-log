@@ -5,46 +5,63 @@ A cross-platform desktop application for tracking vehicle maintenance, built wit
 ## Features
 
 - **Multi-vehicle support** — manage as many vehicles as you need
-- **Spreadsheet-style table** — sortable columns, familiar layout
-- **Maintenance categories** — oil changes, brakes, tires, and more
+- **Spreadsheet-style table** — sortable columns with row numbers, familiar layout
+- **Maintenance categories** — oil changes, brakes, tires, and more (plus custom categories)
 - **Cost tracking** — parts, labor, and total cost per record
 - **Next-due reminders** — track upcoming maintenance by date or mileage
+- **CSV import** — migrate data from existing spreadsheets
 - **CSV export** — export any vehicle's history to a spreadsheet
 - **Active/inactive vehicles** — archive old vehicles without losing data
+- **Color themes** — Light, Dark, Soft Blue, Sage Green, Warm Sand, and Lavender
+- **Configurable database location** — store your data on a shared drive to access from multiple computers
 - **Single-file database** — your data is one portable `.db` file
 
 ## Requirements
 
 - Python 3.10 or newer
-- PySide6
 
-## Setup
+## Quick Start (Windows)
 
-1. **Clone or download** this project into a folder.
+1. Install [Python](https://www.python.org/downloads/) — **check "Add Python to PATH"** during installation.
+2. Clone or download this project.
+3. Double-click **`setup.bat`** — this creates a virtual environment and installs dependencies.
+4. Double-click **`VehicleLog.bat`** to launch the app.
 
-2. **(Recommended) Create a virtual environment:**
+That's it! Use `VehicleLog.bat` to launch the app anytime.
 
+## Quick Start (Linux)
+
+1. Make sure Python 3 is installed:
    ```bash
-   # Windows
-   python -m venv venv
-   venv\Scripts\activate
-
-   # Linux
-   python3 -m venv venv
-   source venv/bin/activate
+   # Ubuntu / Mint
+   sudo apt install python3 python3-venv python3-pip
+   ```
+2. Clone or download this project.
+3. Make the scripts executable and run setup:
+   ```bash
+   chmod +x setup.sh VehicleLog.sh
+   ./setup.sh
+   ```
+4. Launch the app:
+   ```bash
+   ./VehicleLog.sh
    ```
 
-3. **Install dependencies:**
+## Manual Setup (if you prefer)
 
-   ```bash
-   pip install -r requirements.txt
-   ```
+If you'd rather not use the provided scripts:
 
-4. **Run the app:**
+```bash
+cd vehicle-maintenance-log
+python -m venv venv
 
-   ```bash
-   python main.py
-   ```
+# Activate the virtual environment
+source venv/bin/activate        # Linux
+# venv\Scripts\activate         # Windows
+
+pip install -r requirements.txt
+python main.py
+```
 
 The database file (`vehicle_maintenance.db`) is created automatically in the project folder on first run.
 
@@ -59,20 +76,32 @@ Select a vehicle from the dropdown, then click **Add Record**. Fill in the date,
 ### Editing Records
 Double-click a row in the table, or select a row and click **Edit Record**.
 
-### Exporting
+### Importing from CSV
+Select a vehicle, then use **File → Import from CSV**. The importer auto-detects your column headers, shows a preview, and lets you confirm before importing. Supports common date formats and currency formatting.
+
+### Exporting to CSV
 Select a vehicle and use **File → Export to CSV** (or the toolbar button) to save that vehicle's full history as a CSV file.
+
+### Changing the Theme
+Use **View → Theme** to switch between color themes. Your choice is saved and remembered across restarts.
+
+### Changing the Database Location
+Use **File → Settings** to point the app at a database file on a shared drive. This lets you access the same data from multiple computers (Windows and Linux). The app can copy your existing data to the new location automatically.
 
 ### Keyboard Shortcuts
 | Shortcut   | Action            |
 |------------|-------------------|
 | Ctrl+N     | Add new record    |
+| Ctrl+I     | Import from CSV   |
 | Ctrl+E     | Export to CSV     |
 | Delete     | Delete record     |
 | Ctrl+Q     | Quit              |
 
 ## Data Storage
 
-All data is stored in a single SQLite file: `vehicle_maintenance.db`. To back up your data, simply copy this file. To move your data to another computer, copy the file along with the application.
+All data is stored in a single SQLite file: `vehicle_maintenance.db`. To back up your data, simply copy this file. The database location can be changed in **File → Settings**.
+
+App preferences (theme, database path) are stored in `settings.json` in the project folder.
 
 ## Project Structure
 
@@ -80,16 +109,21 @@ All data is stored in a single SQLite file: `vehicle_maintenance.db`. To back up
 vehicle-maintenance-log/
 ├── main.py              # Application UI and entry point
 ├── database.py          # SQLite database operations
+├── config.py            # Settings management
 ├── requirements.txt     # Python dependencies
+├── setup.bat            # Windows first-time setup
+├── setup.sh             # Linux first-time setup
+├── VehicleLog.bat       # Windows launcher
+├── VehicleLog.sh        # Linux launcher
+├── .gitignore           # Git ignore rules
 ├── README.md            # This file
+├── settings.json        # Created on first settings change
 └── vehicle_maintenance.db  # Created on first run
 ```
 
 ## Future Ideas
 
-- Import from CSV (migrate existing spreadsheet data)
 - Dashboard with spending charts
 - Reminder notifications for upcoming maintenance
-- Dark/light theme toggle
 - Fuel economy tracking
 - Receipt photo attachments

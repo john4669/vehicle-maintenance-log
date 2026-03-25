@@ -40,7 +40,7 @@ echo [3/3] Setup complete!
 echo.
 echo ============================================
 echo  You can now launch the app by double-clicking:
-echo  VehicleLog.bat
+echo  VehicleLog.vbs
 echo ============================================
 echo.
 pause

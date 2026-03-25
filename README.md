@@ -12,8 +12,10 @@ A cross-platform desktop application for tracking vehicle maintenance, built wit
 - **CSV import** — migrate data from existing spreadsheets
 - **CSV export** — export any vehicle's history to a spreadsheet
 - **Active/inactive vehicles** — archive old vehicles without losing data
-- **Color themes** — Light, Dark, Soft Blue, Sage Green, Warm Sand, and Lavender
+- **Color themes** — Light, Dark, Sky Blue, Sage Green, Warm Sand, Lavender, and Soft Rose
 - **Configurable database location** — store your data on a shared drive to access from multiple computers
+- **Auto-backup** — automatically backs up your database on close (keeps last 5)
+- **Desktop shortcuts** — scripts to create desktop shortcuts on Windows and Linux
 - **Single-file database** — your data is one portable `.db` file
 
 ## Requirements
@@ -25,9 +27,9 @@ A cross-platform desktop application for tracking vehicle maintenance, built wit
 1. Install [Python](https://www.python.org/downloads/) — **check "Add Python to PATH"** during installation.
 2. Clone or download this project.
 3. Double-click **`setup.bat`** — this creates a virtual environment and installs dependencies.
-4. Double-click **`VehicleLog.bat`** to launch the app.
+4. Double-click **`VehicleLog.vbs`** to launch the app.
 
-That's it! Use `VehicleLog.bat` to launch the app anytime.
+That's it! Use `VehicleLog.vbs` to launch the app anytime.
 
 ## Quick Start (Linux)
 
@@ -107,18 +109,23 @@ App preferences (theme, database path) are stored in `settings.json` in the proj
 
 ```
 vehicle-maintenance-log/
-├── main.py              # Application UI and entry point
-├── database.py          # SQLite database operations
-├── config.py            # Settings management
-├── requirements.txt     # Python dependencies
-├── setup.bat            # Windows first-time setup
-├── setup.sh             # Linux first-time setup
-├── VehicleLog.bat       # Windows launcher
-├── VehicleLog.sh        # Linux launcher
-├── .gitignore           # Git ignore rules
-├── README.md            # This file
-├── settings.json        # Created on first settings change
-└── vehicle_maintenance.db  # Created on first run
+├── main.py                      # Application UI and entry point
+├── database.py                  # SQLite database operations
+├── config.py                    # Settings management
+├── requirements.txt             # Python dependencies
+├── setup.bat                    # Windows first-time setup
+├── setup.sh                     # Linux first-time setup
+├── VehicleLog.vbs               # Windows launcher (no terminal window)
+├── VehicleLog.sh                # Linux launcher
+├── create-shortcut-windows.vbs  # Creates Windows desktop shortcut
+├── create-shortcut-linux.sh     # Creates Linux desktop shortcut
+├── icon.ico                     # Windows app icon
+├── icon_256.png                 # Linux app icon
+├── icon.svg                     # Scalable vector icon
+├── .gitignore                   # Git ignore rules
+├── README.md                    # This file
+├── settings.json                # Created on first settings change
+└── vehicle_maintenance.db       # Created on first run
 ```
 
 ## Future Ideas

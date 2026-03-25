@@ -5,7 +5,7 @@ shortcutPath = desktopPath & "\Vehicle Maintenance Log.lnk"
 
 Set sc = ws.CreateShortcut(shortcutPath)
 sc.TargetPath = "wscript.exe"
-sc.Arguments = """" & appDir & "launch.vbs"""
+sc.Arguments = """" & appDir & "VehicleLog.vbs"""
 sc.WorkingDirectory = appDir
 sc.IconLocation = appDir & "icon.ico, 0"
 sc.WindowStyle = 7

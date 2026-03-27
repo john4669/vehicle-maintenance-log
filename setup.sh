@@ -9,6 +9,7 @@ if ! command -v python3 &> /dev/null; then
     echo "ERROR: Python 3 is not installed."
     echo
     echo "Install it with:"
+    echo "  macOS:        brew install python3"
     echo "  Ubuntu/Mint:  sudo apt install python3 python3-venv python3-pip"
     echo "  Fedora:       sudo dnf install python3 python3-pip"
     echo

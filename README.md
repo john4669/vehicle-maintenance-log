@@ -15,7 +15,7 @@ A cross-platform desktop application for tracking vehicle maintenance, built wit
 - **Color themes** — Light, Dark, Sky Blue, Sage Green, Warm Sand, Lavender, and Soft Rose
 - **Configurable database location** — store your data on a shared drive to access from multiple computers
 - **Auto-backup** — automatically backs up your database on close (keeps last 5)
-- **Desktop shortcuts** — scripts to create desktop shortcuts on Windows and Linux
+- **Desktop shortcuts** — scripts to create desktop shortcuts on Windows, Linux, and macOS
 - **Single-file database** — your data is one portable `.db` file
 
 ## Requirements
@@ -30,6 +30,29 @@ A cross-platform desktop application for tracking vehicle maintenance, built wit
 4. Double-click **`VehicleLog.vbs`** to launch the app.
 
 That's it! Use `VehicleLog.vbs` to launch the app anytime.
+
+## Quick Start (macOS)
+
+1. Install Python 3 if not already installed:
+   ```bash
+   brew install python3
+   ```
+2. Clone or download this project.
+3. Make the scripts executable and run setup:
+   ```bash
+   chmod +x setup.sh VehicleLog.sh create-shortcut-macos.sh
+   ./setup.sh
+   ```
+4. Create a desktop app shortcut (optional):
+   ```bash
+   ./create-shortcut-macos.sh
+   ```
+   This creates a **Vehicle Maintenance Log.app** on your Desktop. On first launch, macOS may prompt you to allow the app — right-click it and choose **Open**, or go to **System Settings → Privacy & Security → Open Anyway**.
+
+5. Or launch directly from the terminal:
+   ```bash
+   ./VehicleLog.sh
+   ```
 
 ## Quick Start (Linux)
 
@@ -58,7 +81,7 @@ cd vehicle-maintenance-log
 python -m venv venv
 
 # Activate the virtual environment
-source venv/bin/activate        # Linux
+source venv/bin/activate        # macOS / Linux
 # venv\Scripts\activate         # Windows
 
 pip install -r requirements.txt
@@ -115,19 +138,25 @@ vehicle-maintenance-log/
 ├── config.py                    # Settings management
 ├── requirements.txt             # Python dependencies
 ├── setup.bat                    # Windows first-time setup
-├── setup.sh                     # Linux first-time setup
+├── setup.sh                     # macOS / Linux first-time setup
 ├── VehicleLog.vbs               # Windows launcher (no terminal window)
-├── VehicleLog.sh                # Linux launcher
+├── VehicleLog.sh                # macOS / Linux launcher
 ├── create-shortcut-windows.vbs  # Creates Windows desktop shortcut
+├── create-shortcut-macos.sh     # Creates macOS desktop app bundle
 ├── create-shortcut-linux.sh     # Creates Linux desktop shortcut
 ├── icon.ico                     # Windows app icon
-├── icon_256.png                 # Linux app icon
-├── icon.svg                     # Scalable vector icon
+├── icon_256.png                 # macOS / Linux app icon
+├── icon.svg                     # Scalable vector icon (source)
 ├── .gitignore                   # Git ignore rules
+├── LICENSE                      # MIT License
 ├── README.md                    # This file
 ├── settings.json                # Created on first settings change
 └── vehicle_maintenance.db       # Created on first run
 ```
+
+## License
+
+This project is licensed under the [MIT License](LICENSE).
 
 ## Future Ideas
 

@@ -22,7 +22,7 @@ from PySide6.QtGui import (
     QAction, QActionGroup, QIcon, QFont, QColor, QPalette,
     QTextDocument, QPageLayout,
 )
-from PySide6.QtPrintSupport import QPrinter, QPrintDialog
+from PySide6.QtPrintSupport import QPrinter, QPrintPreviewDialog
 
 from database import Database
 import config
@@ -1308,9 +1308,9 @@ class MainWindow(QMainWindow):
 
         vehicle_name = f"{v['year']} {v['make']} {v['model']}"
         details = []
-        if v.get("vin"):
+        if v["vin"]:
             details.append(f"VIN: {v['vin']}")
-        if v.get("plate"):
+        if v["plate"]:
             details.append(f"Plate: {v['plate']}")
 
         # Build HTML
@@ -1374,15 +1374,20 @@ class MainWindow(QMainWindow):
         html += f"<div class='summary'>{' &nbsp;|&nbsp; '.join(parts)}</div>"
         html += "</body></html>"
 
+        self._print_html = html
+
         printer = QPrinter(QPrinter.HighResolution)
         printer.setPageOrientation(QPageLayout.Orientation.Landscape)
-        dlg = QPrintDialog(printer, self)
-        if dlg.exec() == QPrintDialog.Accepted:
-            doc = QTextDocument()
-            doc.setHtml(html)
-            doc.setPageSize(printer.pageRect(QPrinter.Point).size())
-            doc.print_(printer)
-            self.statusBar().showMessage("Printed.", 3000)
+        preview = QPrintPreviewDialog(printer, self)
+        preview.setWindowTitle(f"Print — {vehicle_name}")
+        preview.paintRequested.connect(self._render_print)
+        preview.exec()
+
+    def _render_print(self, printer):
+        doc = QTextDocument()
+        doc.setHtml(self._print_html)
+        doc.setPageSize(printer.pageRect(QPrinter.Point).size())
+        doc.print_(printer)
 
     # ── Import ─────────────────────────────────────────────────────
 

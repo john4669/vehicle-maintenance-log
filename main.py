@@ -41,6 +41,7 @@ CATEGORIES = [
     "Spark Plugs",
     "Belts/Hoses",
     "Suspension",
+    "Engine",
     "Exhaust",
     "Electrical",
     "Body/Paint",

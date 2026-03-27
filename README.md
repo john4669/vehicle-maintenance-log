@@ -96,6 +96,7 @@ Use **File → Settings** to point the app at a database file on a shared drive.
 | Ctrl+N     | Add new record    |
 | Ctrl+I     | Import from CSV   |
 | Ctrl+E     | Export to CSV     |
+| Ctrl+P     | Print             |
 | Delete     | Delete record     |
 | Ctrl+Q     | Quit              |
 

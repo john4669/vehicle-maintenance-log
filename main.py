@@ -18,7 +18,11 @@ from PySide6.QtWidgets import (
     QDateEdit, QAbstractItemView, QGroupBox, QSplitter, QFrame,
 )
 from PySide6.QtCore import Qt, QDate, QSize
-from PySide6.QtGui import QAction, QActionGroup, QIcon, QFont, QColor, QPalette
+from PySide6.QtGui import (
+    QAction, QActionGroup, QIcon, QFont, QColor, QPalette,
+    QTextDocument, QPageLayout,
+)
+from PySide6.QtPrintSupport import QPrinter, QPrintDialog
 
 from database import Database
 import config
@@ -892,6 +896,13 @@ class MainWindow(QMainWindow):
 
         file_menu.addSeparator()
 
+        print_action = QAction("&Print...", self)
+        print_action.setShortcut("Ctrl+P")
+        print_action.triggered.connect(self._print_log)
+        file_menu.addAction(print_action)
+
+        file_menu.addSeparator()
+
         settings_action = QAction("&Settings...", self)
         settings_action.triggered.connect(self._open_settings)
         file_menu.addAction(settings_action)
@@ -1282,6 +1293,96 @@ class MainWindow(QMainWindow):
         if filepath:
             self.db.export_vehicle_csv(self.current_vehicle_id, filepath)
             self.statusBar().showMessage(f"Exported to {filepath}", 5000)
+
+    # ── Print ──────────────────────────────────────────────────────
+
+    def _print_log(self):
+        if self.current_vehicle_id is None:
+            QMessageBox.information(self, "No Vehicle",
+                                    "Select a vehicle to print.")
+            return
+
+        v = self.db.get_vehicle(self.current_vehicle_id)
+        records = self.db.get_records(self.current_vehicle_id)
+        summary = self.db.get_vehicle_summary(self.current_vehicle_id)
+
+        vehicle_name = f"{v['year']} {v['make']} {v['model']}"
+        details = []
+        if v.get("vin"):
+            details.append(f"VIN: {v['vin']}")
+        if v.get("plate"):
+            details.append(f"Plate: {v['plate']}")
+
+        # Build HTML
+        html = (
+            "<html><head><style>"
+            "body { font-family: Arial, sans-serif; font-size: 10pt; }"
+            "h2 { margin-bottom: 2px; }"
+            ".details { color: #555; margin-bottom: 10px; }"
+            "table { border-collapse: collapse; width: 100%; }"
+            "th { background-color: #e0e0e0; text-align: left; "
+            "padding: 4px 6px; border: 1px solid #999; font-size: 9pt; }"
+            "td { padding: 3px 6px; border: 1px solid #ccc; font-size: 9pt; }"
+            "tr:nth-child(even) { background-color: #f5f5f5; }"
+            ".right { text-align: right; }"
+            ".summary { margin-top: 10px; font-size: 9pt; color: #333; }"
+            "</style></head><body>"
+        )
+        html += f"<h2>{vehicle_name}</h2>"
+        if details:
+            html += f"<div class='details'>{' &nbsp;|&nbsp; '.join(details)}</div>"
+
+        html += (
+            "<table><tr>"
+            "<th>#</th><th>Date</th><th>Mileage</th><th>Category</th>"
+            "<th>Description</th><th>Location</th>"
+            "<th>Parts</th><th>Labor</th><th>Total</th>"
+            "<th>Next Due</th><th>Notes</th>"
+            "</tr>"
+        )
+        for i, r in enumerate(records, 1):
+            mileage = f"{r['mileage']:,}" if r["mileage"] else ""
+            next_parts = []
+            if r["next_due_date"]:
+                next_parts.append(r["next_due_date"])
+            if r["next_due_mileage"]:
+                next_parts.append(f"{r['next_due_mileage']:,} mi")
+            html += (
+                f"<tr>"
+                f"<td class='right'>{i}</td>"
+                f"<td>{r['date']}</td>"
+                f"<td class='right'>{mileage}</td>"
+                f"<td>{r['category'] or ''}</td>"
+                f"<td>{r['description'] or ''}</td>"
+                f"<td>{r['location'] or ''}</td>"
+                f"<td class='right'>${r['parts_cost']:,.2f}</td>"
+                f"<td class='right'>${r['labor_cost']:,.2f}</td>"
+                f"<td class='right'>${r['total_cost']:,.2f}</td>"
+                f"<td>{' / '.join(next_parts)}</td>"
+                f"<td>{r['notes'] or ''}</td>"
+                f"</tr>"
+            )
+        html += "</table>"
+
+        # Summary line
+        parts = [f"Records: {summary['count']}"]
+        parts.append(f"Total Spent: ${summary['total_spent']:,.2f}")
+        if summary["min_mileage"] and summary["max_mileage"]:
+            parts.append(
+                f"Mileage Range: {summary['min_mileage']:,} – {summary['max_mileage']:,}"
+            )
+        html += f"<div class='summary'>{' &nbsp;|&nbsp; '.join(parts)}</div>"
+        html += "</body></html>"
+
+        printer = QPrinter(QPrinter.HighResolution)
+        printer.setPageOrientation(QPageLayout.Orientation.Landscape)
+        dlg = QPrintDialog(printer, self)
+        if dlg.exec() == QPrintDialog.Accepted:
+            doc = QTextDocument()
+            doc.setHtml(html)
+            doc.setPageSize(printer.pageRect(QPrinter.Point).size())
+            doc.print_(printer)
+            self.statusBar().showMessage("Printed.", 3000)
 
     # ── Import ─────────────────────────────────────────────────────
 

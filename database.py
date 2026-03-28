@@ -52,6 +52,20 @@ class Database:
             )
         """)
 
+        cursor.execute("""
+            CREATE TABLE IF NOT EXISTS attachments (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                record_id INTEGER NOT NULL,
+                filename TEXT NOT NULL,
+                file_type TEXT DEFAULT '',
+                file_size INTEGER DEFAULT 0,
+                file_data BLOB NOT NULL,
+                thumbnail BLOB,
+                added_date TEXT DEFAULT (datetime('now')),
+                FOREIGN KEY (record_id) REFERENCES maintenance_records(id) ON DELETE CASCADE
+            )
+        """)
+
         self.conn.commit()
 
     # ── Vehicle Operations ──────────────────────────────────────────
@@ -144,6 +158,45 @@ class Database:
         return self.conn.execute(
             "SELECT * FROM maintenance_records WHERE id=?", (record_id,)
         ).fetchone()
+
+    # ── Attachment Operations ─────────────────────────────────────────
+
+    def add_attachment(self, record_id, filename, file_type, file_size, file_data, thumbnail=None):
+        cursor = self.conn.cursor()
+        cursor.execute(
+            """INSERT INTO attachments
+               (record_id, filename, file_type, file_size, file_data, thumbnail)
+               VALUES (?, ?, ?, ?, ?, ?)""",
+            (record_id, filename, file_type, file_size, file_data, thumbnail),
+        )
+        self.conn.commit()
+        return cursor.lastrowid
+
+    def get_attachments(self, record_id):
+        """Return attachments for a record (without file_data for performance)."""
+        return self.conn.execute(
+            """SELECT id, record_id, filename, file_type, file_size, thumbnail, added_date
+               FROM attachments WHERE record_id = ? ORDER BY added_date""",
+            (record_id,),
+        ).fetchall()
+
+    def get_attachment_data(self, attachment_id):
+        """Return full file_data for a single attachment."""
+        return self.conn.execute(
+            "SELECT file_data, filename, file_type FROM attachments WHERE id = ?",
+            (attachment_id,),
+        ).fetchone()
+
+    def delete_attachment(self, attachment_id):
+        self.conn.execute("DELETE FROM attachments WHERE id = ?", (attachment_id,))
+        self.conn.commit()
+
+    def get_attachment_count(self, record_id):
+        row = self.conn.execute(
+            "SELECT COUNT(*) as count FROM attachments WHERE record_id = ?",
+            (record_id,),
+        ).fetchone()
+        return row["count"]
 
     # ── Summary / Stats ─────────────────────────────────────────────
 

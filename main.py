@@ -8,6 +8,8 @@ import os
 import csv
 import shutil
 import re
+import mimetypes
+import tempfile
 from datetime import datetime, date
 
 from PySide6.QtWidgets import (
@@ -16,17 +18,81 @@ from PySide6.QtWidgets import (
     QDialog, QFormLayout, QLineEdit, QSpinBox, QDoubleSpinBox, QTextEdit,
     QLabel, QMessageBox, QFileDialog, QToolBar, QStatusBar, QCheckBox,
     QDateEdit, QAbstractItemView, QGroupBox, QSplitter, QFrame,
+    QScrollArea, QMenu,
 )
-from PySide6.QtCore import Qt, QDate, QSize
+from PySide6.QtCore import Qt, QDate, QSize, QBuffer, QByteArray, QUrl
 from PySide6.QtGui import (
     QAction, QActionGroup, QIcon, QFont, QColor, QPalette,
-    QTextDocument, QPageLayout,
+    QTextDocument, QPageLayout, QImage, QPixmap, QDesktopServices,
 )
 from PySide6.QtPrintSupport import QPrinter, QPrintPreviewDialog
 
 from database import Database
 import config
 
+
+# ── Image Processing ───────────────────────────────────────────────
+
+MAX_IMAGE_DIMENSION = 1920
+THUMBNAIL_SIZE = 200
+JPEG_QUALITY = 80
+IMAGE_EXTENSIONS = {".jpg", ".jpeg", ".png", ".bmp", ".gif", ".tiff", ".tif", ".webp"}
+
+
+def _is_image_file(filename):
+    return os.path.splitext(filename)[1].lower() in IMAGE_EXTENSIONS
+
+
+def _resize_image_bytes(file_path):
+    """Load an image, resize to max dimension, return (jpeg_bytes, thumbnail_bytes)."""
+    img = QImage(file_path)
+    if img.isNull():
+        return None, None
+
+    # Resize if larger than max dimension
+    if img.width() > MAX_IMAGE_DIMENSION or img.height() > MAX_IMAGE_DIMENSION:
+        img = img.scaled(
+            MAX_IMAGE_DIMENSION, MAX_IMAGE_DIMENSION,
+            Qt.KeepAspectRatio, Qt.SmoothTransformation,
+        )
+
+    # Save resized image as JPEG bytes
+    buf = QBuffer()
+    buf.open(QBuffer.WriteOnly)
+    img.save(buf, "JPEG", JPEG_QUALITY)
+    file_data = bytes(buf.data())
+    buf.close()
+
+    # Generate thumbnail
+    thumb = img.scaled(
+        THUMBNAIL_SIZE, THUMBNAIL_SIZE,
+        Qt.KeepAspectRatio, Qt.SmoothTransformation,
+    )
+    tbuf = QBuffer()
+    tbuf.open(QBuffer.WriteOnly)
+    thumb.save(tbuf, "JPEG", JPEG_QUALITY)
+    thumb_data = bytes(tbuf.data())
+    tbuf.close()
+
+    return file_data, thumb_data
+
+
+def _read_file_bytes(file_path):
+    """Read a non-image file as raw bytes, return (file_bytes, None)."""
+    with open(file_path, "rb") as f:
+        return f.read(), None
+
+
+def _pixmap_from_thumbnail(thumb_bytes):
+    """Create a QPixmap from thumbnail BLOB data."""
+    if not thumb_bytes:
+        return None
+    pm = QPixmap()
+    pm.loadFromData(QByteArray(thumb_bytes))
+    return pm
+
+
+APP_VERSION = "0.1.0"
 
 # ── Maintenance Categories ──────────────────────────────────────────
 
@@ -257,15 +323,22 @@ class VehicleDialog(QDialog):
 class RecordDialog(QDialog):
     """Dialog for adding or editing a maintenance record."""
 
-    def __init__(self, parent=None, record=None):
+    def __init__(self, parent=None, record=None, db=None):
         super().__init__(parent)
         self.record = record
+        self.db = db
         self.setWindowTitle("Edit Record" if record else "Add Maintenance Record")
-        self.setMinimumWidth(450)
+        self.setMinimumWidth(500)
+        # Pending attachments: list of dicts with file info (for new files not yet in DB)
+        self._pending_attachments = []
+        # IDs of existing attachments to delete on save
+        self._removed_attachment_ids = []
         self._build_ui()
 
         if record:
             self._populate(record)
+            if db:
+                self._load_existing_attachments()
 
     def _build_ui(self):
         layout = QFormLayout(self)
@@ -344,6 +417,36 @@ class RecordDialog(QDialog):
         self.notes_edit.setPlaceholderText("Additional notes...")
         layout.addRow("Notes:", self.notes_edit)
 
+        # ── Attachments group ──
+        attach_group = QGroupBox("Attachments")
+        attach_layout = QVBoxLayout(attach_group)
+
+        # Thumbnail strip (horizontal scroll area)
+        self._thumb_widget = QWidget()
+        self._thumb_layout = QHBoxLayout(self._thumb_widget)
+        self._thumb_layout.setContentsMargins(0, 0, 0, 0)
+        self._thumb_layout.setSpacing(8)
+        self._thumb_layout.addStretch()
+
+        scroll = QScrollArea()
+        scroll.setWidgetResizable(True)
+        scroll.setWidget(self._thumb_widget)
+        scroll.setFixedHeight(130)
+        scroll.setHorizontalScrollBarPolicy(Qt.ScrollBarAsNeeded)
+        scroll.setVerticalScrollBarPolicy(Qt.ScrollBarAlwaysOff)
+        attach_layout.addWidget(scroll)
+
+        attach_btn_layout = QHBoxLayout()
+        add_attach_btn = QPushButton("Attach File...")
+        add_attach_btn.clicked.connect(self._attach_file)
+        attach_btn_layout.addWidget(add_attach_btn)
+        self._attach_count_label = QLabel("No attachments")
+        attach_btn_layout.addWidget(self._attach_count_label)
+        attach_btn_layout.addStretch()
+        attach_layout.addLayout(attach_btn_layout)
+
+        layout.addRow(attach_group)
+
         # Buttons
         btn_layout = QHBoxLayout()
         save_btn = QPushButton("Save")
@@ -404,6 +507,165 @@ class RecordDialog(QDialog):
             "notes": self.notes_edit.toPlainText().strip(),
         }
 
+    # ── Attachment methods ──
+
+    def _attach_file(self):
+        default_dir = config.get("attachment_folder") or ""
+        if not default_dir or not os.path.isdir(default_dir):
+            default_dir = os.path.expanduser("~")
+
+        paths, _ = QFileDialog.getOpenFileNames(
+            self, "Attach Files", default_dir,
+            "Images & Documents (*.jpg *.jpeg *.png *.bmp *.gif *.tiff *.tif "
+            "*.webp *.pdf);;All Files (*)",
+        )
+        for path in paths:
+            self._add_pending_attachment(path)
+
+    def _add_pending_attachment(self, file_path):
+        filename = os.path.basename(file_path)
+        mime_type = mimetypes.guess_type(filename)[0] or "application/octet-stream"
+
+        if _is_image_file(filename):
+            file_data, thumb_data = _resize_image_bytes(file_path)
+            if file_data is None:
+                QMessageBox.warning(self, "Error", f"Could not read image:\n{filename}")
+                return
+            file_type = "image/jpeg"  # resized images are always JPEG
+        else:
+            file_data, thumb_data = _read_file_bytes(file_path)
+            file_type = mime_type
+
+        entry = {
+            "filename": filename,
+            "file_type": file_type,
+            "file_size": len(file_data),
+            "file_data": file_data,
+            "thumbnail": thumb_data,
+            "db_id": None,  # Not yet saved
+        }
+        self._pending_attachments.append(entry)
+        self._add_thumbnail_widget(entry, len(self._pending_attachments) - 1, is_existing=False)
+        self._update_attach_count()
+
+    def _load_existing_attachments(self):
+        if not self.db or not self.record:
+            return
+        attachments = self.db.get_attachments(self.record["id"])
+        for att in attachments:
+            entry = {
+                "filename": att["filename"],
+                "file_type": att["file_type"],
+                "file_size": att["file_size"],
+                "thumbnail": bytes(att["thumbnail"]) if att["thumbnail"] else None,
+                "db_id": att["id"],
+            }
+            self._pending_attachments.append(entry)
+            self._add_thumbnail_widget(entry, len(self._pending_attachments) - 1, is_existing=True)
+        self._update_attach_count()
+
+    def _add_thumbnail_widget(self, entry, index, is_existing):
+        """Add a clickable thumbnail card to the strip."""
+        card = QFrame()
+        card.setFrameStyle(QFrame.Box)
+        card.setFixedSize(100, 110)
+        card_layout = QVBoxLayout(card)
+        card_layout.setContentsMargins(4, 4, 4, 4)
+        card_layout.setSpacing(2)
+
+        # Thumbnail image or file icon
+        thumb_label = QLabel()
+        thumb_label.setAlignment(Qt.AlignCenter)
+        thumb_label.setFixedSize(90, 70)
+
+        if entry["thumbnail"]:
+            pm = _pixmap_from_thumbnail(entry["thumbnail"])
+            if pm:
+                thumb_label.setPixmap(pm.scaled(90, 70, Qt.KeepAspectRatio, Qt.SmoothTransformation))
+        if thumb_label.pixmap() is None or thumb_label.pixmap().isNull():
+            thumb_label.setText("PDF" if "pdf" in (entry.get("file_type") or "") else "FILE")
+            thumb_label.setStyleSheet("background: #ddd; color: #666; font-weight: bold;")
+
+        card_layout.addWidget(thumb_label)
+
+        # Filename label (truncated)
+        name = entry["filename"]
+        if len(name) > 14:
+            name = name[:11] + "..."
+        name_label = QLabel(name)
+        name_label.setAlignment(Qt.AlignCenter)
+        name_label.setStyleSheet("font-size: 10px;")
+        name_label.setToolTip(entry["filename"])
+        card_layout.addWidget(name_label)
+
+        # Right-click context menu for view/remove
+        card.setContextMenuPolicy(Qt.CustomContextMenu)
+        card.customContextMenuRequested.connect(
+            lambda pos, idx=index, w=card: self._attachment_context_menu(pos, idx, w)
+        )
+        # Double-click to view
+        card.mouseDoubleClickEvent = lambda ev, idx=index: self._view_attachment(idx)
+
+        # Insert before the stretch
+        self._thumb_layout.insertWidget(self._thumb_layout.count() - 1, card)
+
+    def _attachment_context_menu(self, pos, index, widget):
+        menu = QMenu(self)
+        view_action = menu.addAction("Open / View")
+        remove_action = menu.addAction("Remove")
+        action = menu.exec(widget.mapToGlobal(pos))
+        if action == view_action:
+            self._view_attachment(index)
+        elif action == remove_action:
+            self._remove_attachment(index, widget)
+
+    def _view_attachment(self, index):
+        entry = self._pending_attachments[index]
+
+        # Need full file data — either from pending entry or DB
+        if "file_data" in entry and entry["file_data"]:
+            data = entry["file_data"]
+        elif entry.get("db_id") and self.db:
+            row = self.db.get_attachment_data(entry["db_id"])
+            if not row:
+                return
+            data = bytes(row["file_data"])
+        else:
+            return
+
+        # Write to temp file and open with system viewer
+        ext = os.path.splitext(entry["filename"])[1] or ".bin"
+        tmp = tempfile.NamedTemporaryFile(delete=False, suffix=ext, prefix="vml_")
+        tmp.write(data)
+        tmp.close()
+        QDesktopServices.openUrl(QUrl.fromLocalFile(tmp.name))
+
+    def _remove_attachment(self, index, widget):
+        entry = self._pending_attachments[index]
+        if entry.get("db_id"):
+            self._removed_attachment_ids.append(entry["db_id"])
+        self._pending_attachments[index] = None  # Mark as removed (keep indices stable)
+        widget.setParent(None)
+        widget.deleteLater()
+        self._update_attach_count()
+
+    def _update_attach_count(self):
+        count = sum(1 for a in self._pending_attachments if a is not None)
+        if count == 0:
+            self._attach_count_label.setText("No attachments")
+        elif count == 1:
+            self._attach_count_label.setText("1 attachment")
+        else:
+            self._attach_count_label.setText(f"{count} attachments")
+
+    def get_pending_attachments(self):
+        """Return list of new attachments to save (those without a db_id)."""
+        return [a for a in self._pending_attachments if a is not None and a.get("db_id") is None]
+
+    def get_removed_attachment_ids(self):
+        """Return list of DB attachment IDs to delete."""
+        return self._removed_attachment_ids
+
 
 # ════════════════════════════════════════════════════════════════════
 #  Settings Dialog
@@ -461,6 +723,38 @@ class SettingsDialog(QDialog):
         db_layout.addWidget(default_btn)
 
         layout.addWidget(db_group)
+
+        # ── Attachments Folder ──
+        attach_group = QGroupBox("Default Attachments Folder")
+        attach_layout = QVBoxLayout(attach_group)
+
+        attach_info = QLabel(
+            "Set the default folder opened when attaching files to records.\n"
+            "Useful if your phone sends photos to a specific folder\n"
+            "(e.g. via KDE Connect, Syncthing, etc.)."
+        )
+        attach_info.setWordWrap(True)
+        attach_info.setStyleSheet("color: gray;")
+        attach_layout.addWidget(attach_info)
+
+        attach_path_layout = QHBoxLayout()
+        current_attach = config.get("attachment_folder") or ""
+        self.attach_folder_edit = QLineEdit(current_attach)
+        self.attach_folder_edit.setReadOnly(True)
+        self.attach_folder_edit.setPlaceholderText("Not set (will use system default)")
+        attach_path_layout.addWidget(self.attach_folder_edit)
+
+        attach_browse_btn = QPushButton("Browse...")
+        attach_browse_btn.clicked.connect(self._browse_attach_folder)
+        attach_path_layout.addWidget(attach_browse_btn)
+
+        attach_layout.addLayout(attach_path_layout)
+
+        attach_clear_btn = QPushButton("Clear (use system default)")
+        attach_clear_btn.clicked.connect(lambda: self.attach_folder_edit.setText(""))
+        attach_layout.addWidget(attach_clear_btn)
+
+        layout.addWidget(attach_group)
 
         # ── Current Info ──
         info_group = QGroupBox("Current Database Info")
@@ -540,8 +834,19 @@ class SettingsDialog(QDialog):
         else:
             self.overwrite_warning.setVisible(False)
 
+    def _browse_attach_folder(self):
+        folder = QFileDialog.getExistingDirectory(
+            self, "Choose Default Attachments Folder",
+            self.attach_folder_edit.text() or os.path.expanduser("~"),
+        )
+        if folder:
+            self.attach_folder_edit.setText(folder)
+
     def get_new_path(self):
         return self.path_edit.text()
+
+    def get_attachment_folder(self):
+        return self.attach_folder_edit.text().strip()
 
     def should_copy(self):
         return self.copy_check.isChecked() and self.copy_check.isEnabled()
@@ -867,7 +1172,7 @@ class MainWindow(QMainWindow):
         self.db = db
         self.current_vehicle_id = None
 
-        self.setWindowTitle("Vehicle Maintenance Log")
+        self.setWindowTitle(f"Vehicle Maintenance Log v{APP_VERSION}")
         self.setMinimumSize(1000, 600)
         self.resize(1200, 700)
 
@@ -1055,7 +1360,7 @@ class MainWindow(QMainWindow):
         self.table.verticalHeader().setVisible(False)
 
         columns = [
-            "#", "Date", "Mileage", "Category", "Description", "Location",
+            "#", "\U0001f4ce", "Date", "Mileage", "Category", "Description", "Location",
             "Parts $", "Labor $", "Total $", "Next Due", "Notes",
         ]
         self.table.setColumnCount(len(columns))
@@ -1063,8 +1368,9 @@ class MainWindow(QMainWindow):
 
         header = self.table.horizontalHeader()
         header.setSectionResizeMode(0, QHeaderView.ResizeToContents)  # # column tight
-        header.setSectionResizeMode(4, QHeaderView.Stretch)  # Description stretches
-        header.setSectionResizeMode(5, QHeaderView.Stretch)  # Location stretches
+        header.setSectionResizeMode(1, QHeaderView.ResizeToContents)  # attachment indicator tight
+        header.setSectionResizeMode(5, QHeaderView.Stretch)  # Description stretches
+        header.setSectionResizeMode(6, QHeaderView.Stretch)  # Location stretches
 
         layout.addWidget(self.table)
 
@@ -1181,23 +1487,31 @@ class MainWindow(QMainWindow):
             num_item.setTextAlignment(Qt.AlignCenter)
             self.table.setItem(row_idx, 0, num_item)
 
+            # Attachment indicator column
+            att_count = self.db.get_attachment_count(r["id"])
+            att_item = QTableWidgetItem("\U0001f4ce" if att_count > 0 else "")
+            att_item.setTextAlignment(Qt.AlignCenter)
+            if att_count > 0:
+                att_item.setToolTip(f"{att_count} attachment{'s' if att_count != 1 else ''}")
+            self.table.setItem(row_idx, 1, att_item)
+
             # Store record ID in the date column's data
             date_item = QTableWidgetItem(r["date"])
             date_item.setData(Qt.UserRole, r["id"])
-            self.table.setItem(row_idx, 1, date_item)
+            self.table.setItem(row_idx, 2, date_item)
 
             # Mileage with comma formatting
             mileage_val = r["mileage"] or 0
             mileage_item = QTableWidgetItem(f"{mileage_val:,}" if mileage_val else "")
             mileage_item.setData(Qt.UserRole + 1, mileage_val)  # For sorting
             mileage_item.setTextAlignment(Qt.AlignRight | Qt.AlignVCenter)
-            self.table.setItem(row_idx, 2, mileage_item)
+            self.table.setItem(row_idx, 3, mileage_item)
 
-            self.table.setItem(row_idx, 3, QTableWidgetItem(r["category"] or ""))
-            self.table.setItem(row_idx, 4, QTableWidgetItem(r["description"] or ""))
-            self.table.setItem(row_idx, 5, QTableWidgetItem(r["location"] or ""))
+            self.table.setItem(row_idx, 4, QTableWidgetItem(r["category"] or ""))
+            self.table.setItem(row_idx, 5, QTableWidgetItem(r["description"] or ""))
+            self.table.setItem(row_idx, 6, QTableWidgetItem(r["location"] or ""))
 
-            for col, field in [(6, "parts_cost"), (7, "labor_cost"), (8, "total_cost")]:
+            for col, field in [(7, "parts_cost"), (8, "labor_cost"), (9, "total_cost")]:
                 item = QTableWidgetItem(f"${r[field]:,.2f}")
                 item.setTextAlignment(Qt.AlignRight | Qt.AlignVCenter)
                 self.table.setItem(row_idx, col, item)
@@ -1208,9 +1522,9 @@ class MainWindow(QMainWindow):
                 next_parts.append(r["next_due_date"])
             if r["next_due_mileage"]:
                 next_parts.append(f"{r['next_due_mileage']:,} mi")
-            self.table.setItem(row_idx, 9, QTableWidgetItem(" / ".join(next_parts)))
+            self.table.setItem(row_idx, 10, QTableWidgetItem(" / ".join(next_parts)))
 
-            self.table.setItem(row_idx, 10, QTableWidgetItem(r["notes"] or ""))
+            self.table.setItem(row_idx, 11, QTableWidgetItem(r["notes"] or ""))
 
         self.table.setSortingEnabled(True)
         self._refresh_summary()
@@ -1235,7 +1549,7 @@ class MainWindow(QMainWindow):
         row = self.table.currentRow()
         if row < 0:
             return None
-        item = self.table.item(row, 1)  # Date column stores record ID
+        item = self.table.item(row, 2)  # Date column stores record ID
         return item.data(Qt.UserRole) if item else None
 
     def _add_record(self):
@@ -1243,10 +1557,11 @@ class MainWindow(QMainWindow):
             QMessageBox.information(self, "No Vehicle",
                                     "Please add or select a vehicle first.")
             return
-        dlg = RecordDialog(self)
+        dlg = RecordDialog(self, db=self.db)
         if dlg.exec() == QDialog.Accepted:
             data = dlg.get_data()
-            self.db.add_record(self.current_vehicle_id, **data)
+            record_id = self.db.add_record(self.current_vehicle_id, **data)
+            self._save_attachments(dlg, record_id)
             self._refresh_table()
             self.statusBar().showMessage("Record added.", 3000)
 
@@ -1257,12 +1572,23 @@ class MainWindow(QMainWindow):
                                     "Select a record to edit.")
             return
         record = self.db.get_record(record_id)
-        dlg = RecordDialog(self, record)
+        dlg = RecordDialog(self, record, db=self.db)
         if dlg.exec() == QDialog.Accepted:
             data = dlg.get_data()
             self.db.update_record(record_id, **data)
+            self._save_attachments(dlg, record_id)
             self._refresh_table()
             self.statusBar().showMessage("Record updated.", 3000)
+
+    def _save_attachments(self, dlg, record_id):
+        """Save new attachments and delete removed ones."""
+        for att_id in dlg.get_removed_attachment_ids():
+            self.db.delete_attachment(att_id)
+        for att in dlg.get_pending_attachments():
+            self.db.add_attachment(
+                record_id, att["filename"], att["file_type"],
+                att["file_size"], att["file_data"], att["thumbnail"],
+            )
 
     def _delete_record(self):
         record_id = self._get_selected_record_id()
@@ -1442,6 +1768,9 @@ class MainWindow(QMainWindow):
         old_path = config.get_db_path()
         dlg = SettingsDialog(self)
         if dlg.exec() == QDialog.Accepted:
+            # Save attachment folder setting (always)
+            config.set("attachment_folder", dlg.get_attachment_folder())
+
             new_path = dlg.get_new_path()
             if new_path == old_path:
                 return

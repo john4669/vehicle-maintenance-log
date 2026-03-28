@@ -14,6 +14,7 @@ _DEFAULTS = {
     "theme": "system",  # system, light, dark, blue, green, sand, lavender
     "auto_backup": True,  # Automatically back up database on close
     "max_backups": 5,  # Number of backup files to keep
+    "attachment_folder": "",  # Default folder for file picker when attaching files
 }
 
 

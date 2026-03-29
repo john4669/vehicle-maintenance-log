@@ -31,6 +31,8 @@ A cross-platform desktop application for tracking vehicle maintenance, built wit
 
 That's it! The database and settings are created automatically next to the `.exe`.
 
+**Note:** Windows SmartScreen may show a "Windows protected your PC" warning. This is normal for unsigned open-source software — it does not mean the file is harmful. To proceed, click **"More info"** then **"Run anyway"**. The full source code is available in this repository if you prefer to review and run it yourself.
+
 ## Quick Start (Windows — From Source)
 
 1. Install [Python](https://www.python.org/downloads/) — **check "Add Python to PATH"** during installation.

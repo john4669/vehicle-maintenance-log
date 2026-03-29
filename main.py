@@ -399,6 +399,7 @@ class RecordDialog(QDialog):
 
         self.next_date_edit = QDateEdit()
         self.next_date_edit.setCalendarPopup(True)
+        self.next_date_edit.setMinimumDate(QDate.currentDate())
         self.next_date_edit.setSpecialValueText("Not set")
         self.next_date_edit.setDate(self.next_date_edit.minimumDate())
         self.next_date_edit.setDisplayFormat("yyyy-MM-dd")

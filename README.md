@@ -169,6 +169,8 @@ vehicle-maintenance-log/
 
 This project is licensed under the [MIT License](LICENSE).
 
+This application uses [PySide6/Qt](https://www.qt.io/) (LGPL-3.0). Source code is available in this repository, allowing you to rebuild with a modified Qt library.
+
 ## Future Ideas
 
 - Dashboard with spending charts

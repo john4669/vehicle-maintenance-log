@@ -4,9 +4,13 @@ config.py - Application settings stored as a JSON file alongside the app.
 
 import json
 import os
+import sys
 
-# Config file lives in the same folder as the app
-_CONFIG_DIR = os.path.dirname(os.path.abspath(__file__))
+# Config file lives in the same folder as the app (or the .exe when frozen)
+if getattr(sys, "frozen", False):
+    _CONFIG_DIR = os.path.dirname(sys.executable)
+else:
+    _CONFIG_DIR = os.path.dirname(os.path.abspath(__file__))
 _CONFIG_FILE = os.path.join(_CONFIG_DIR, "settings.json")
 
 _DEFAULTS = {

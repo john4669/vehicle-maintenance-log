@@ -94,6 +94,15 @@ def _pixmap_from_thumbnail(thumb_bytes):
 
 APP_VERSION = "0.1.0"
 
+
+def _resource_path(filename):
+    """Resolve path to a bundled resource file (works frozen and unfrozen)."""
+    if getattr(sys, "frozen", False):
+        base = sys._MEIPASS  # PyInstaller temp dir for bundled data
+    else:
+        base = os.path.dirname(os.path.abspath(__file__))
+    return os.path.join(base, filename)
+
 # ── Maintenance Categories ──────────────────────────────────────────
 
 CATEGORIES = [
@@ -798,7 +807,7 @@ class SettingsDialog(QDialog):
 
     def _reset_default(self):
         default_path = os.path.join(
-            os.path.dirname(os.path.abspath(__file__)),
+            config._CONFIG_DIR,
             "vehicle_maintenance.db"
         )
         old_path = self.path_edit.text()
@@ -1873,7 +1882,7 @@ def _resolve_db_path():
     """Validate the configured db path. Fall back to default if it's bad."""
     db_path = config.get_db_path()
     default_path = os.path.join(
-        os.path.dirname(os.path.abspath(__file__)),
+        config._CONFIG_DIR,
         "vehicle_maintenance.db"
     )
 
@@ -1893,6 +1902,11 @@ def main():
     app = QApplication(sys.argv)
     app.setApplicationName("Vehicle Maintenance Log")
     app.setOrganizationName("VehicleLog")
+
+    # Set application icon
+    icon_path = _resource_path("icon_256.png")
+    if os.path.exists(icon_path):
+        app.setWindowIcon(QIcon(icon_path))
 
     # Use the system style for native look
     app.setStyle("Fusion")

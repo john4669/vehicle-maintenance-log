@@ -15,14 +15,23 @@ A cross-platform desktop application for tracking vehicle maintenance, built wit
 - **Color themes** — Light, Dark, Sky Blue, Sage Green, Warm Sand, Lavender, and Soft Rose
 - **Configurable database location** — store your data on a shared drive to access from multiple computers
 - **Auto-backup** — automatically backs up your database on close (keeps last 5)
+- **File attachments** — attach receipts, photos, or PDFs to any record (auto-resized, stored in the database)
 - **Desktop shortcuts** — scripts to create desktop shortcuts on Windows, Linux, and macOS
 - **Single-file database** — your data is one portable `.db` file
+- **Standalone Windows executable** — download and run, no Python install required
 
 ## Requirements
 
-- Python 3.10 or newer
+- Python 3.10 or newer (not needed if using the standalone `.exe`)
 
-## Quick Start (Windows)
+## Quick Start (Windows — Standalone)
+
+1. Download **`VehicleMaintenanceLog.exe`** from the [Releases](../../releases) page.
+2. Put it in any folder and double-click to run.
+
+That's it! The database and settings are created automatically next to the `.exe`.
+
+## Quick Start (Windows — From Source)
 
 1. Install [Python](https://www.python.org/downloads/) — **check "Add Python to PATH"** during installation.
 2. Clone or download this project.
@@ -147,6 +156,8 @@ vehicle-maintenance-log/
 ├── icon.ico                     # Windows app icon
 ├── icon_256.png                 # macOS / Linux app icon
 ├── icon.svg                     # Scalable vector icon (source)
+├── VehicleLog.spec              # PyInstaller build configuration
+├── build.bat                    # Build standalone .exe (Windows)
 ├── .gitignore                   # Git ignore rules
 ├── LICENSE                      # MIT License
 ├── README.md                    # This file
@@ -163,4 +174,3 @@ This project is licensed under the [MIT License](LICENSE).
 - Dashboard with spending charts
 - Reminder notifications for upcoming maintenance
 - Fuel economy tracking
-- Receipt photo attachments

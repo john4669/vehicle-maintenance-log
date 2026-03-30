@@ -505,6 +505,7 @@ class RecordDialog(QDialog):
         return {
             "date": self.date_edit.date().toString("yyyy-MM-dd"),
             "mileage": self.mileage_spin.value(),
+            "category": "",
             "description": self.desc_edit.text().strip(),
             "location": self.location_edit.text().strip(),
             "parts_cost": self.parts_spin.value(),
@@ -1419,6 +1420,7 @@ class MainWindow(QMainWindow):
         self.table.setSortingEnabled(True)
         self.table.setEditTriggers(QAbstractItemView.NoEditTriggers)
         self.table.doubleClicked.connect(self._edit_record)
+        self.table.setWordWrap(True)
         self.table.verticalHeader().setVisible(False)
 
         columns = [
@@ -1589,6 +1591,7 @@ class MainWindow(QMainWindow):
             self.table.setItem(row_idx, 11, QTableWidgetItem(r["notes"] or ""))
 
         self.table.setSortingEnabled(True)
+        self.table.resizeRowsToContents()
         self._refresh_summary()
 
     def _clear_table(self):

@@ -92,7 +92,7 @@ def _pixmap_from_thumbnail(thumb_bytes):
     return pm
 
 
-APP_VERSION = "0.1.0"
+APP_VERSION = "0.2.0-alpha"
 
 
 def _resource_path(filename):
@@ -363,11 +363,6 @@ class RecordDialog(QDialog):
         self.mileage_spin.setSuffix(" mi")
         layout.addRow("Mileage:", self.mileage_spin)
 
-        self.category_combo = QComboBox()
-        self.category_combo.addItems(CATEGORIES)
-        self.category_combo.setEditable(True)
-        layout.addRow("Category:", self.category_combo)
-
         self.desc_edit = QLineEdit()
         self.desc_edit.setPlaceholderText("e.g. Full synthetic oil change, new filter")
         layout.addRow("Description:", self.desc_edit)
@@ -393,6 +388,13 @@ class RecordDialog(QDialog):
         self.labor_spin.setDecimals(2)
         self.labor_spin.valueChanged.connect(self._update_total)
         cost_layout.addRow("Labor:", self.labor_spin)
+
+        self.tax_spin = QDoubleSpinBox()
+        self.tax_spin.setRange(0, 999_999.99)
+        self.tax_spin.setPrefix("$ ")
+        self.tax_spin.setDecimals(2)
+        self.tax_spin.valueChanged.connect(self._update_total)
+        cost_layout.addRow("Tax:", self.tax_spin)
 
         self.total_spin = QDoubleSpinBox()
         self.total_spin.setRange(0, 999_999.99)
@@ -470,21 +472,18 @@ class RecordDialog(QDialog):
         layout.addRow(btn_layout)
 
     def _update_total(self):
-        self.total_spin.setValue(self.parts_spin.value() + self.labor_spin.value())
+        self.total_spin.setValue(
+            self.parts_spin.value() + self.labor_spin.value() + self.tax_spin.value()
+        )
 
     def _populate(self, r):
         self.date_edit.setDate(QDate.fromString(r["date"], "yyyy-MM-dd"))
         self.mileage_spin.setValue(r["mileage"] or 0)
-        # Set category
-        idx = self.category_combo.findText(r["category"])
-        if idx >= 0:
-            self.category_combo.setCurrentIndex(idx)
-        else:
-            self.category_combo.setEditText(r["category"] or "")
         self.desc_edit.setText(r["description"] or "")
         self.location_edit.setText(r["location"] or "")
         self.parts_spin.setValue(r["parts_cost"] or 0)
         self.labor_spin.setValue(r["labor_cost"] or 0)
+        self.tax_spin.setValue(r["tax"] or 0)
         self.total_spin.setValue(r["total_cost"] or 0)
         if r["next_due_date"]:
             self.next_date_edit.setDate(QDate.fromString(r["next_due_date"], "yyyy-MM-dd"))
@@ -506,11 +505,11 @@ class RecordDialog(QDialog):
         return {
             "date": self.date_edit.date().toString("yyyy-MM-dd"),
             "mileage": self.mileage_spin.value(),
-            "category": self.category_combo.currentText().strip(),
             "description": self.desc_edit.text().strip(),
             "location": self.location_edit.text().strip(),
             "parts_cost": self.parts_spin.value(),
             "labor_cost": self.labor_spin.value(),
+            "tax": self.tax_spin.value(),
             "total_cost": self.total_spin.value(),
             "next_due_date": next_date,
             "next_due_mileage": self.next_mileage_spin.value(),
@@ -622,10 +621,13 @@ class RecordDialog(QDialog):
     def _attachment_context_menu(self, pos, index, widget):
         menu = QMenu(self)
         view_action = menu.addAction("Open / View")
+        save_action = menu.addAction("Save As...")
         remove_action = menu.addAction("Remove")
         action = menu.exec(widget.mapToGlobal(pos))
         if action == view_action:
             self._view_attachment(index)
+        elif action == save_action:
+            self._save_attachment(index)
         elif action == remove_action:
             self._remove_attachment(index, widget)
 
@@ -649,6 +651,28 @@ class RecordDialog(QDialog):
         tmp.write(data)
         tmp.close()
         QDesktopServices.openUrl(QUrl.fromLocalFile(tmp.name))
+
+    def _save_attachment(self, index):
+        entry = self._pending_attachments[index]
+
+        # Get file data from pending entry or DB
+        if "file_data" in entry and entry["file_data"]:
+            data = entry["file_data"]
+        elif entry.get("db_id") and self.db:
+            row = self.db.get_attachment_data(entry["db_id"])
+            if not row:
+                return
+            data = bytes(row["file_data"])
+        else:
+            return
+
+        default_dir = config.get("attachment_folder") or os.path.expanduser("~")
+        save_path, _ = QFileDialog.getSaveFileName(
+            self, "Save Attachment", os.path.join(default_dir, entry["filename"]),
+        )
+        if save_path:
+            with open(save_path, "wb") as f:
+                f.write(data)
 
     def _remove_attachment(self, index, widget):
         entry = self._pending_attachments[index]
@@ -883,6 +907,8 @@ class ImportCSVDialog(QDialog):
         "labour cost":        ("labor_cost", "float"),
         "material cost":      ("parts_cost", "float"),
         "parts cost":         ("parts_cost", "float"),
+        "tax":                ("tax", "float"),
+        "sales tax":          ("tax", "float"),
         "total cost":         ("total_cost", "float"),
         "total":              ("total_cost", "float"),
         "price":              ("total_cost", "float"),
@@ -1103,6 +1129,7 @@ class ImportCSVDialog(QDialog):
                 "location": "",
                 "parts_cost": 0.0,
                 "labor_cost": 0.0,
+                "tax": 0.0,
                 "total_cost": 0.0,
                 "next_due_date": "",
                 "next_due_mileage": 0,
@@ -1132,10 +1159,10 @@ class ImportCSVDialog(QDialog):
 
     def _update_preview(self):
         """Show parsed data in the preview table."""
-        columns = ["Date", "Mileage", "Category", "Description",
-                    "Location", "Parts $", "Labor $", "Total $"]
-        fields = ["date", "mileage", "category", "description",
-                  "location", "parts_cost", "labor_cost", "total_cost"]
+        columns = ["Date", "Mileage", "Description",
+                    "Location", "Parts $", "Labor $", "Tax $", "Total $"]
+        fields = ["date", "mileage", "description",
+                  "location", "parts_cost", "labor_cost", "tax", "total_cost"]
 
         self.preview_table.setColumnCount(len(columns))
         self.preview_table.setHorizontalHeaderLabels(columns)
@@ -1155,8 +1182,8 @@ class ImportCSVDialog(QDialog):
                 self.preview_table.setItem(row_idx, col_idx, QTableWidgetItem(text))
 
         header = self.preview_table.horizontalHeader()
+        header.setSectionResizeMode(2, QHeaderView.Stretch)
         header.setSectionResizeMode(3, QHeaderView.Stretch)
-        header.setSectionResizeMode(4, QHeaderView.Stretch)
 
         # Stats
         total_rows = len(self.parsed_rows)
@@ -1296,6 +1323,31 @@ class MainWindow(QMainWindow):
             theme_group.addAction(action)
             theme_menu.addAction(action)
 
+        # About menu
+        about_menu = menubar.addMenu("&About")
+        about_action = QAction("&About Vehicle Maintenance Log", self)
+        about_action.triggered.connect(self._show_about)
+        about_menu.addAction(about_action)
+
+    def _show_about(self):
+        QMessageBox.about(
+            self,
+            "About Vehicle Maintenance Log",
+            f"<h3>Vehicle Maintenance Log</h3>"
+            f"<p>Version {APP_VERSION}</p>"
+            f"<p>A cross-platform desktop app for tracking vehicle "
+            f"maintenance records, built with PySide6 (Qt6) and SQLite.</p>"
+            f"<hr>"
+            f"<p>MIT License</p>"
+            f"<p>Copyright &copy; 2025 John Friede</p>"
+            f"<p>Permission is hereby granted, free of charge, to any person "
+            f"obtaining a copy of this software and associated documentation "
+            f"files, to deal in the Software without restriction, including "
+            f"without limitation the rights to use, copy, modify, merge, "
+            f"publish, distribute, sublicense, and/or sell copies of the "
+            f"Software, subject to the conditions in the LICENSE file.</p>"
+        )
+
     # ── Toolbar ─────────────────────────────────────────────────────
 
     def _build_toolbar(self):
@@ -1370,8 +1422,8 @@ class MainWindow(QMainWindow):
         self.table.verticalHeader().setVisible(False)
 
         columns = [
-            "#", "\U0001f4ce", "Date", "Mileage", "Category", "Description", "Location",
-            "Parts $", "Labor $", "Total $", "Next Due", "Notes",
+            "#", "\U0001f4ce", "Date", "Mileage", "Description", "Location",
+            "Parts $", "Labor $", "Tax $", "Total $", "Next Due", "Notes",
         ]
         self.table.setColumnCount(len(columns))
         self.table.setHorizontalHeaderLabels(columns)
@@ -1379,8 +1431,8 @@ class MainWindow(QMainWindow):
         header = self.table.horizontalHeader()
         header.setSectionResizeMode(0, QHeaderView.ResizeToContents)  # # column tight
         header.setSectionResizeMode(1, QHeaderView.ResizeToContents)  # attachment indicator tight
-        header.setSectionResizeMode(5, QHeaderView.Stretch)  # Description stretches
-        header.setSectionResizeMode(6, QHeaderView.Stretch)  # Location stretches
+        header.setSectionResizeMode(4, QHeaderView.Stretch)  # Description stretches
+        header.setSectionResizeMode(5, QHeaderView.Stretch)  # Location stretches
 
         layout.addWidget(self.table)
 
@@ -1517,11 +1569,11 @@ class MainWindow(QMainWindow):
             mileage_item.setTextAlignment(Qt.AlignRight | Qt.AlignVCenter)
             self.table.setItem(row_idx, 3, mileage_item)
 
-            self.table.setItem(row_idx, 4, QTableWidgetItem(r["category"] or ""))
-            self.table.setItem(row_idx, 5, QTableWidgetItem(r["description"] or ""))
-            self.table.setItem(row_idx, 6, QTableWidgetItem(r["location"] or ""))
+            self.table.setItem(row_idx, 4, QTableWidgetItem(r["description"] or ""))
+            self.table.setItem(row_idx, 5, QTableWidgetItem(r["location"] or ""))
 
-            for col, field in [(7, "parts_cost"), (8, "labor_cost"), (9, "total_cost")]:
+            for col, field in [(6, "parts_cost"), (7, "labor_cost"),
+                              (8, "tax"), (9, "total_cost")]:
                 item = QTableWidgetItem(f"${r[field]:,.2f}")
                 item.setTextAlignment(Qt.AlignRight | Qt.AlignVCenter)
                 self.table.setItem(row_idx, col, item)
@@ -1671,9 +1723,9 @@ class MainWindow(QMainWindow):
 
         html += (
             "<table><tr>"
-            "<th>#</th><th>Date</th><th>Mileage</th><th>Category</th>"
+            "<th>#</th><th>Date</th><th>Mileage</th>"
             "<th>Description</th><th>Location</th>"
-            "<th>Parts</th><th>Labor</th><th>Total</th>"
+            "<th>Parts</th><th>Labor</th><th>Tax</th><th>Total</th>"
             "<th>Next Due</th><th>Notes</th>"
             "</tr>"
         )
@@ -1689,11 +1741,11 @@ class MainWindow(QMainWindow):
                 f"<td class='right'>{i}</td>"
                 f"<td>{r['date']}</td>"
                 f"<td class='right'>{mileage}</td>"
-                f"<td>{r['category'] or ''}</td>"
                 f"<td>{r['description'] or ''}</td>"
                 f"<td>{r['location'] or ''}</td>"
                 f"<td class='right'>${r['parts_cost']:,.2f}</td>"
                 f"<td class='right'>${r['labor_cost']:,.2f}</td>"
+                f"<td class='right'>${r['tax']:,.2f}</td>"
                 f"<td class='right'>${r['total_cost']:,.2f}</td>"
                 f"<td>{' / '.join(next_parts)}</td>"
                 f"<td>{r['notes'] or ''}</td>"

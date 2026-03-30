@@ -52,6 +52,14 @@ class Database:
             )
         """)
 
+        # Add tax column if upgrading from older schema
+        cursor.execute("PRAGMA table_info(maintenance_records)")
+        existing_cols = {row[1] for row in cursor.fetchall()}
+        if "tax" not in existing_cols:
+            cursor.execute(
+                "ALTER TABLE maintenance_records ADD COLUMN tax REAL DEFAULT 0.0"
+            )
+
         cursor.execute("""
             CREATE TABLE IF NOT EXISTS attachments (
                 id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -108,32 +116,34 @@ class Database:
     # ── Maintenance Record Operations ───────────────────────────────
 
     def add_record(self, vehicle_id, date, mileage, category, description,
-                   location="", parts_cost=0.0, labor_cost=0.0, total_cost=0.0,
-                   next_due_date="", next_due_mileage=0, notes=""):
+                   location="", parts_cost=0.0, labor_cost=0.0, tax=0.0,
+                   total_cost=0.0, next_due_date="", next_due_mileage=0, notes=""):
         cursor = self.conn.cursor()
         cursor.execute(
             """INSERT INTO maintenance_records
                (vehicle_id, date, mileage, category, description, location,
-                parts_cost, labor_cost, total_cost, next_due_date, next_due_mileage, notes)
-               VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
+                parts_cost, labor_cost, tax, total_cost,
+                next_due_date, next_due_mileage, notes)
+               VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
             (vehicle_id, date, mileage, category, description, location,
-             parts_cost, labor_cost, total_cost, next_due_date, next_due_mileage, notes),
+             parts_cost, labor_cost, tax, total_cost,
+             next_due_date, next_due_mileage, notes),
         )
         self.conn.commit()
         return cursor.lastrowid
 
     def update_record(self, record_id, date, mileage, category, description,
-                      location="", parts_cost=0.0, labor_cost=0.0, total_cost=0.0,
-                      next_due_date="", next_due_mileage=0, notes=""):
+                      location="", parts_cost=0.0, labor_cost=0.0, tax=0.0,
+                      total_cost=0.0, next_due_date="", next_due_mileage=0, notes=""):
         self.conn.execute(
             """UPDATE maintenance_records
                SET date=?, mileage=?, category=?, description=?, location=?,
-                   parts_cost=?, labor_cost=?, total_cost=?, next_due_date=?,
-                   next_due_mileage=?, notes=?
+                   parts_cost=?, labor_cost=?, tax=?, total_cost=?,
+                   next_due_date=?, next_due_mileage=?, notes=?
                WHERE id=?""",
             (date, mileage, category, description, location,
-             parts_cost, labor_cost, total_cost, next_due_date, next_due_mileage,
-             notes, record_id),
+             parts_cost, labor_cost, tax, total_cost,
+             next_due_date, next_due_mileage, notes, record_id),
         )
         self.conn.commit()
 
@@ -142,7 +152,7 @@ class Database:
         self.conn.commit()
 
     def get_records(self, vehicle_id, sort_column="date", sort_order="DESC"):
-        allowed_columns = {"date", "mileage", "category", "description",
+        allowed_columns = {"date", "mileage", "description",
                            "location", "total_cost"}
         if sort_column not in allowed_columns:
             sort_column = "date"
@@ -229,15 +239,15 @@ class Database:
             writer.writerow([])
             # Column headers
             writer.writerow([
-                "Date", "Mileage", "Category", "Description", "Location",
-                "Parts Cost", "Labor Cost", "Total Cost",
+                "Date", "Mileage", "Description", "Location",
+                "Parts Cost", "Labor Cost", "Tax", "Total Cost",
                 "Next Due Date", "Next Due Mileage", "Notes"
             ])
             for r in records:
                 writer.writerow([
-                    r["date"], r["mileage"], r["category"], r["description"],
+                    r["date"], r["mileage"], r["description"],
                     r["location"], f"{r['parts_cost']:.2f}", f"{r['labor_cost']:.2f}",
-                    f"{r['total_cost']:.2f}", r["next_due_date"],
+                    f"{r['tax']:.2f}", f"{r['total_cost']:.2f}", r["next_due_date"],
                     r["next_due_mileage"], r["notes"],
                 ])
 

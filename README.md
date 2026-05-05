@@ -161,7 +161,7 @@ vehicle-maintenance-log/
 ├── VehicleLog.spec              # PyInstaller build configuration
 ├── build.bat                    # Build standalone .exe (Windows)
 ├── .gitignore                   # Git ignore rules
-├── LICENSE                      # MIT License
+├── LICENSE                      # CC BY-NC-SA 4.0
 ├── README.md                    # This file
 ├── settings.json                # Created on first settings change
 └── vehicle_maintenance.db       # Created on first run
@@ -169,7 +169,7 @@ vehicle-maintenance-log/
 
 ## License
 
-This project is licensed under the [MIT License](LICENSE).
+This project is licensed under the [Creative Commons Attribution-NonCommercial-ShareAlike 4.0 International](LICENSE) (CC BY-NC-SA 4.0).
 
 This application uses [PySide6/Qt](https://www.qt.io/) (LGPL-3.0). Source code is available in this repository, allowing you to rebuild with a modified Qt library.
 

@@ -1339,14 +1339,11 @@ class MainWindow(QMainWindow):
             f"<p>A cross-platform desktop app for tracking vehicle "
             f"maintenance records, built with PySide6 (Qt6) and SQLite.</p>"
             f"<hr>"
-            f"<p>MIT License</p>"
+            f"<p>CC BY-NC-SA 4.0</p>"
             f"<p>Copyright &copy; 2025 John Friede</p>"
-            f"<p>Permission is hereby granted, free of charge, to any person "
-            f"obtaining a copy of this software and associated documentation "
-            f"files, to deal in the Software without restriction, including "
-            f"without limitation the rights to use, copy, modify, merge, "
-            f"publish, distribute, sublicense, and/or sell copies of the "
-            f"Software, subject to the conditions in the LICENSE file.</p>"
+            f"<p>This work is licensed under the Creative Commons "
+            f"Attribution-NonCommercial-ShareAlike 4.0 International License. "
+            f"See the LICENSE file for details.</p>"
         )
 
     # ── Toolbar ─────────────────────────────────────────────────────

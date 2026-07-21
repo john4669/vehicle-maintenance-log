@@ -41,6 +41,10 @@ Three-module structure — all application code lives in root:
 - **No category column in UI**: Category was removed from the table view but remains in the database schema for backward compatibility.
 - **Foreign keys enabled**: `PRAGMA foreign_keys = ON` — cascading deletes are active.
 
+## Workflow Notes
+
+- Before committing, always ask whether README.md needs to be updated to reflect the change.
+
 ## UI Patterns
 
 - Vehicle selector dropdown in toolbar controls which records are displayed

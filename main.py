@@ -92,7 +92,7 @@ def _pixmap_from_thumbnail(thumb_bytes):
     return pm
 
 
-APP_VERSION = "0.2.0-alpha"
+APP_VERSION = "0.3.0-alpha"
 
 
 def _resource_path(filename):
@@ -1209,6 +1209,8 @@ class MainWindow(QMainWindow):
         super().__init__()
         self.db = db
         self.current_vehicle_id = None
+        self._search_matches = []
+        self._search_index = -1
 
         self.setWindowTitle(f"Vehicle Maintenance Log v{APP_VERSION}")
         self.setMinimumSize(1000, 600)
@@ -1324,6 +1326,12 @@ class MainWindow(QMainWindow):
             theme_group.addAction(action)
             theme_menu.addAction(action)
 
+        # View > Find
+        view_menu.addSeparator()
+        find_action = QAction("&Find...", self)
+        find_action.triggered.connect(self._open_search)
+        view_menu.addAction(find_action)
+
         # About menu
         about_menu = menubar.addMenu("&About")
         about_action = QAction("&About Vehicle Maintenance Log", self)
@@ -1388,6 +1396,13 @@ class MainWindow(QMainWindow):
         export_btn.clicked.connect(self._export_csv)
         toolbar.addWidget(export_btn)
 
+        toolbar.addSeparator()
+
+        search_btn = QPushButton(" Search")
+        search_btn.setShortcut("Ctrl+F")
+        search_btn.clicked.connect(self._open_search)
+        toolbar.addWidget(search_btn)
+
     # ── Central Widget ──────────────────────────────────────────────
 
     def _build_central(self):
@@ -1435,6 +1450,45 @@ class MainWindow(QMainWindow):
 
         layout.addWidget(self.table)
 
+        # Search bar (hidden until Ctrl+F)
+        self._build_search_bar(layout)
+
+    def _build_search_bar(self, parent_layout):
+        self._search_bar = QWidget()
+        bar_layout = QHBoxLayout(self._search_bar)
+        bar_layout.setContentsMargins(4, 2, 4, 2)
+        bar_layout.setSpacing(4)
+
+        bar_layout.addWidget(QLabel("Find:"))
+
+        self._search_input = QLineEdit()
+        self._search_input.setPlaceholderText("Search all fields…")
+        self._search_input.setMaximumWidth(250)
+        self._search_input.textChanged.connect(self._search_changed)
+        bar_layout.addWidget(self._search_input)
+
+        self._search_count_label = QLabel("")
+        bar_layout.addWidget(self._search_count_label)
+
+        prev_btn = QPushButton("▲ Prev")
+        prev_btn.setFixedWidth(70)
+        prev_btn.clicked.connect(self._search_prev)
+        bar_layout.addWidget(prev_btn)
+
+        next_btn = QPushButton("▼ Next")
+        next_btn.setFixedWidth(70)
+        next_btn.clicked.connect(self._search_next)
+        bar_layout.addWidget(next_btn)
+
+        close_btn = QPushButton("✕")
+        close_btn.setFixedWidth(28)
+        close_btn.clicked.connect(self._close_search)
+        bar_layout.addWidget(close_btn)
+
+        bar_layout.addStretch()
+        self._search_bar.hide()
+        parent_layout.addWidget(self._search_bar)
+
     # ── Status Bar ──────────────────────────────────────────────────
 
     def _build_statusbar(self):
@@ -1480,6 +1534,8 @@ class MainWindow(QMainWindow):
             return
         self._refresh_vehicle_info()
         self._refresh_table()
+        if self._search_bar.isVisible():
+            self._search_changed(self._search_input.text())
 
     def _refresh_vehicle_info(self):
         v = self.db.get_vehicle(self.current_vehicle_id)
@@ -1606,6 +1662,78 @@ class MainWindow(QMainWindow):
                 f"Mileage Range: {s['min_mileage']:,} – {s['max_mileage']:,}"
             )
         self.summary_label.setText("   |   ".join(parts))
+
+    # ── Search ──────────────────────────────────────────────────────
+
+    def _open_search(self):
+        self._search_bar.show()
+        self._search_input.setFocus()
+        self._search_input.selectAll()
+
+    def _close_search(self):
+        self._search_bar.hide()
+        self._search_input.clear()
+        self._search_matches = []
+        self._search_index = -1
+        self._search_count_label.setText("")
+        self.table.clearSelection()
+
+    def keyPressEvent(self, event):
+        if event.key() == Qt.Key_Escape and self._search_bar.isVisible():
+            self._close_search()
+        else:
+            super().keyPressEvent(event)
+
+    def _search_changed(self, text):
+        self._search_matches = []
+        self._search_index = -1
+        self.table.clearSelection()
+
+        term = text.strip().lower()
+        if not term:
+            self._search_count_label.setText("")
+            self._search_count_label.setStyleSheet("")
+            return
+
+        for row in range(self.table.rowCount()):
+            for col in range(self.table.columnCount()):
+                item = self.table.item(row, col)
+                if item and term in item.text().lower():
+                    self._search_matches.append(row)
+                    break
+
+        count = len(self._search_matches)
+        if count == 0:
+            self._search_count_label.setText("No matches")
+            self._search_count_label.setStyleSheet("color: red;")
+        else:
+            self._search_count_label.setStyleSheet("color: green;")
+            self._search_index = 0
+            self._jump_to_match()
+
+    def _jump_to_match(self):
+        if not self._search_matches:
+            return
+        row = self._search_matches[self._search_index]
+        self.table.selectRow(row)
+        self.table.scrollToItem(self.table.item(row, 0),
+                                QAbstractItemView.PositionAtCenter)
+        total = len(self._search_matches)
+        self._search_count_label.setText(
+            f"{self._search_index + 1} of {total} match{'es' if total != 1 else ''}"
+        )
+
+    def _search_next(self):
+        if not self._search_matches:
+            return
+        self._search_index = (self._search_index + 1) % len(self._search_matches)
+        self._jump_to_match()
+
+    def _search_prev(self):
+        if not self._search_matches:
+            return
+        self._search_index = (self._search_index - 1) % len(self._search_matches)
+        self._jump_to_match()
 
     def _get_selected_record_id(self):
         row = self.table.currentRow()

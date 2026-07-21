@@ -16,6 +16,7 @@ A cross-platform desktop application for tracking vehicle maintenance, built wit
 - **Configurable database location** — store your data on a shared drive to access from multiple computers
 - **Auto-backup** — automatically backs up your database on close (keeps last 5)
 - **File attachments** — attach receipts, photos, or PDFs to any record (auto-resized, stored in the database)
+- **Search** — Ctrl+F or toolbar button opens an inline search bar with match count and prev/next navigation
 - **Desktop shortcuts** — scripts to create desktop shortcuts on Windows, Linux, and macOS
 - **Single-file database** — your data is one portable `.db` file
 - **Standalone Windows executable** — download and run, no Python install required

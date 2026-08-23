@@ -33,6 +33,10 @@ Three-module structure — all application code lives in root:
 - **database.py** — SQLite wrapper class `Database`. Handles schema creation/migration, CRUD for vehicles/records/attachments, CSV export, and vehicle summaries. Uses `sqlite3.Row` for dict-like access.
 - **config.py** — JSON-based settings stored alongside the executable. Merges user settings with `_DEFAULTS` on every read. Config file location adapts for PyInstaller frozen builds via `sys._MEIPASS`.
 
+## Cross-Platform Line Endings
+
+A `.gitattributes` file enforces LF for all Python/text files and CRLF for `.bat`/`.vbs` scripts. Binary files (`.db`, `.exe`, `.png`, `.ico`) are marked binary. This prevents CRLF issues when building the Windows `.exe` via PyInstaller after pulling on Windows.
+
 ## Key Design Decisions
 
 - **Single-file database**: All data including file attachments (images, PDFs) stored as BLOBs in SQLite. Images are auto-resized to max 1920px with JPEG thumbnails at 200px.

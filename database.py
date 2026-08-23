@@ -208,6 +208,16 @@ class Database:
         ).fetchone()
         return row["count"]
 
+    def get_distinct_values(self, field):
+        """Return sorted distinct non-empty values for 'description' or 'location'."""
+        if field not in {"description", "location"}:
+            return []
+        rows = self.conn.execute(
+            f"SELECT DISTINCT {field} FROM maintenance_records "
+            f"WHERE {field} != '' ORDER BY {field} COLLATE NOCASE"
+        ).fetchall()
+        return [row[0] for row in rows]
+
     # ── Summary / Stats ─────────────────────────────────────────────
 
     def get_vehicle_summary(self, vehicle_id):

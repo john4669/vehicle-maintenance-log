@@ -18,9 +18,9 @@ from PySide6.QtWidgets import (
     QDialog, QFormLayout, QLineEdit, QSpinBox, QDoubleSpinBox, QTextEdit,
     QLabel, QMessageBox, QFileDialog, QToolBar, QStatusBar, QCheckBox,
     QDateEdit, QAbstractItemView, QGroupBox, QSplitter, QFrame,
-    QScrollArea, QMenu,
+    QScrollArea, QMenu, QCompleter,
 )
-from PySide6.QtCore import Qt, QDate, QSize, QBuffer, QByteArray, QUrl
+from PySide6.QtCore import Qt, QDate, QSize, QBuffer, QByteArray, QUrl, QTimer
 from PySide6.QtGui import (
     QAction, QActionGroup, QIcon, QFont, QColor, QPalette,
     QTextDocument, QPageLayout, QImage, QPixmap, QDesktopServices,
@@ -92,7 +92,7 @@ def _pixmap_from_thumbnail(thumb_bytes):
     return pm
 
 
-APP_VERSION = "0.3.0-alpha"
+APP_VERSION = "1.0.0"
 
 
 def _resource_path(filename):
@@ -227,6 +227,19 @@ def apply_theme(app, theme_name):
         app.setPalette(_make_palette(colors))
 
 
+# ── Spin box subclasses that select all text on focus ──────────────
+
+class _SpinBox(QSpinBox):
+    def focusInEvent(self, event):
+        super().focusInEvent(event)
+        QTimer.singleShot(0, self.selectAll)
+
+class _DoubleSpinBox(QDoubleSpinBox):
+    def focusInEvent(self, event):
+        super().focusInEvent(event)
+        QTimer.singleShot(0, self.selectAll)
+
+
 # ════════════════════════════════════════════════════════════════════
 #  Vehicle Dialog
 # ════════════════════════════════════════════════════════════════════
@@ -247,7 +260,7 @@ class VehicleDialog(QDialog):
     def _build_ui(self):
         layout = QFormLayout(self)
 
-        self.year_spin = QSpinBox()
+        self.year_spin = _SpinBox()
         self.year_spin.setRange(1900, 2100)
         self.year_spin.setValue(date.today().year)
         layout.addRow("Year:", self.year_spin)
@@ -358,7 +371,7 @@ class RecordDialog(QDialog):
         self.date_edit.setDisplayFormat("yyyy-MM-dd")
         layout.addRow("Date:", self.date_edit)
 
-        self.mileage_spin = QSpinBox()
+        self.mileage_spin = _SpinBox()
         self.mileage_spin.setRange(0, 9_999_999)
         self.mileage_spin.setSuffix(" mi")
         layout.addRow("Mileage:", self.mileage_spin)
@@ -371,32 +384,36 @@ class RecordDialog(QDialog):
         self.location_edit.setPlaceholderText("e.g. Jiffy Lube - Main St")
         layout.addRow("Location:", self.location_edit)
 
+        if self.db:
+            self._attach_completer(self.desc_edit, "description")
+            self._attach_completer(self.location_edit, "location")
+
         # ── Cost group ──
         cost_group = QGroupBox("Cost")
         cost_layout = QFormLayout(cost_group)
 
-        self.parts_spin = QDoubleSpinBox()
+        self.parts_spin = _DoubleSpinBox()
         self.parts_spin.setRange(0, 999_999.99)
         self.parts_spin.setPrefix("$ ")
         self.parts_spin.setDecimals(2)
         self.parts_spin.valueChanged.connect(self._update_total)
         cost_layout.addRow("Parts:", self.parts_spin)
 
-        self.labor_spin = QDoubleSpinBox()
+        self.labor_spin = _DoubleSpinBox()
         self.labor_spin.setRange(0, 999_999.99)
         self.labor_spin.setPrefix("$ ")
         self.labor_spin.setDecimals(2)
         self.labor_spin.valueChanged.connect(self._update_total)
         cost_layout.addRow("Labor:", self.labor_spin)
 
-        self.tax_spin = QDoubleSpinBox()
+        self.tax_spin = _DoubleSpinBox()
         self.tax_spin.setRange(0, 999_999.99)
         self.tax_spin.setPrefix("$ ")
         self.tax_spin.setDecimals(2)
         self.tax_spin.valueChanged.connect(self._update_total)
         cost_layout.addRow("Tax:", self.tax_spin)
 
-        self.total_spin = QDoubleSpinBox()
+        self.total_spin = _DoubleSpinBox()
         self.total_spin.setRange(0, 999_999.99)
         self.total_spin.setPrefix("$ ")
         self.total_spin.setDecimals(2)
@@ -416,7 +433,7 @@ class RecordDialog(QDialog):
         self.next_date_edit.setDisplayFormat("yyyy-MM-dd")
         due_layout.addRow("Date:", self.next_date_edit)
 
-        self.next_mileage_spin = QSpinBox()
+        self.next_mileage_spin = _SpinBox()
         self.next_mileage_spin.setRange(0, 9_999_999)
         self.next_mileage_spin.setSuffix(" mi")
         self.next_mileage_spin.setSpecialValueText("Not set")
@@ -475,6 +492,13 @@ class RecordDialog(QDialog):
         self.total_spin.setValue(
             self.parts_spin.value() + self.labor_spin.value() + self.tax_spin.value()
         )
+
+    def _attach_completer(self, widget, field):
+        values = self.db.get_distinct_values(field)
+        completer = QCompleter(values, widget)
+        completer.setCaseSensitivity(Qt.CaseInsensitive)
+        completer.setFilterMode(Qt.MatchContains)
+        widget.setCompleter(completer)
 
     def _populate(self, r):
         self.date_edit.setDate(QDate.fromString(r["date"], "yyyy-MM-dd"))
